@@ -4,8 +4,8 @@ import type { DateApiFormat } from '../modules/day/day';
 import type { Result } from '../utils/types';
 
 export const CameraShortSchema = z.object({
-  name: z.string(),
-  full_name: z.string(),
+  name: z.string().optional(),
+  full_name: z.string().optional(),
 })
 export const CameraSchema = CameraShortSchema.extend({
   id: z.number(),
@@ -15,8 +15,8 @@ export const CameraSchema = CameraShortSchema.extend({
 export const RoverSchema = z.object({
   id: z.number(),
   name: z.string(),
-  landing_data: z.string(),
-  launch_date: z.string(),
+  landing_data: z.string().optional(),
+  launch_date: z.string().optional(),
   status: z.string(),
   max_sol: z.number(),
   max_date: z.string(),
@@ -27,10 +27,10 @@ export const PhotoSchema = z.object({
   id: z.number(),
   sol: z.number(),
   img_src: z.string().url(),
-  camera: CameraSchema,
+  camera: CameraSchema.optional(),
   earth_date: z.string(),
-  rover: RoverSchema,
-  cameras: z.array(CameraShortSchema),
+  rover: RoverSchema.optional(),
+  cameras: z.array(CameraShortSchema).optional(),
 })
 
 
@@ -52,14 +52,21 @@ export type GetImagesError = typeof GET_IMAGES_ERROR[keyof typeof GET_IMAGES_ERR
 
 export async function getImagesByDay(date: DateApiFormat): Promise<Result<PhotosResponse, GetImagesError>> {
   try {
-    const response = await ky.get(`https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos?earth_date=${date}&api_key=DEMO_KEY`).json();
+    const response = await ky.get(`https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos?earth_date=${date}&api_key=DEMO_KEY`, {
+      // this can take a while
+      timeout: 15_000,
+    }).json();
     const result = PhotosResponseSchema.safeParse(response);
     if (result.error) {
+      console.error(`api error ${result.error.message}`);
       return { ok: false, value: GET_IMAGES_ERROR.invalidResponse };
     }
     return { ok: true, value: result.data };
-  } catch {
-    console.error('failed to get images');
+  } catch (e) {
+    if (typeof e === 'object' && e !== null && 'status' in e) {
+      console.log(e.status);
+    }
+    console.error(`failed to get images: ${e}`);
     return { ok: false, value: GET_IMAGES_ERROR.apiFailure };
   }
 }

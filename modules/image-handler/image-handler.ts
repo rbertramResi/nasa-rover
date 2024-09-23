@@ -11,17 +11,14 @@ export const FIND_AND_SAVE_ERRORS = {
 
 export type FindAndSaveErrors = typeof FIND_AND_SAVE_ERRORS[keyof typeof FIND_AND_SAVE_ERRORS];
 
+// no try/catch in function; failures handled in allSettled
 async function saveTask(photoData: Photo) {
   // NOTE: location redirect hangs, manually replace old domain with new
   const response = await axios.get(photoData.img_src.replace('mars.jpl.nasa.gov', 'mars.nasa.gov'), {
     timeout: 2_000,
+    responseType: 'arraybuffer',
   });
-  try {
-    const imageData = await response.data.arrayBuffer();
-    await downloadImage(imageData, photoData.earth_date, `${photoData.rover?.name ?? 'unknown_rover'}-${photoData.id}`)
-  } catch (e) {
-    console.error('download or buffer fail', e)
-  }
+  await downloadImage(response.data, photoData.earth_date, `${photoData.rover?.name ?? 'unknown_rover'}-${photoData.id}`);
 }
 
 export async function findAndSaveImagesByDate(date: DateApiFormat): Promise<Result<null, FindAndSaveErrors | GetImagesError>> {
@@ -30,21 +27,24 @@ export async function findAndSaveImagesByDate(date: DateApiFormat): Promise<Resu
   if (!apiResult.ok) {
     return apiResult;
   }
-  const tasks = [];
-  for (const photoData of apiResult.value.photos) {
-    try {
-      tasks.push(saveTask(photoData));
-    } catch (error) {
-      console.error('error fetching image:', error);
-    }
-  }
+  const tasks = apiResult.value.photos.map(saveTask);
   const results = await Promise.allSettled(tasks);
-  if (results.every(r => r.status === 'rejected')) {
+
+  if (results.every(logIfRejected)) {
     console.error('all images failed to download');
     return { ok: false, value: FIND_AND_SAVE_ERRORS.downloadError };
-  } else if (results.some(r => r.status === 'rejected')) {
+  }
+  if (results.some(logIfRejected)) {
     console.warn('some images failed to download');
     return { ok: false, value: FIND_AND_SAVE_ERRORS.partialDownloadError };
   }
   return { ok: true, value: null };
+}
+
+function logIfRejected<T>(settled: PromiseSettledResult<T>): boolean {
+  if (settled.status === 'rejected') {
+    console.error(settled.reason);
+    return true;
+  }
+  return false;
 }

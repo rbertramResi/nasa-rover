@@ -49,7 +49,14 @@ export const GET_IMAGES_ERROR = {
 export type GetImagesError = typeof GET_IMAGES_ERROR[keyof typeof GET_IMAGES_ERROR];
 
 export async function getImagesByDay(date: DateApiFormat): Promise<Result<PhotosResponse, GetImagesError>> {
-  const key = Bun.env.NASA_API_KEY ?? 'DEMO_KEY'
+  const key = (() => {
+    if (!Bun.env.NASA_API_KEY) {
+      console.warn('No env.NASA_API_KEY, using DEMO_KEY');
+      return 'DEMO_KEY'
+    }
+    return Bun.env.NASA_API_KEY;
+  })();
+
   try {
     const response = await axios.get(`https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos?earth_date=${date}&api_key=${key}`);
     const result = PhotosResponseSchema.safeParse(response.data);

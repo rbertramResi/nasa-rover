@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import ky from 'ky';
 import type { DateApiFormat } from '../modules/day/day';
 import type { Result } from '../utils/types';
+import axios, { isAxiosError } from 'axios';
 
 export const CameraShortSchema = z.object({
   name: z.string().optional(),
@@ -33,7 +33,6 @@ export const PhotoSchema = z.object({
   cameras: z.array(CameraShortSchema).optional(),
 })
 
-
 export const PhotosResponseSchema = z.object({
   photos: z.array(PhotoSchema),
 });
@@ -41,30 +40,30 @@ export const PhotosResponseSchema = z.object({
 export type Photo = z.infer<typeof PhotoSchema>;
 type PhotosResponse = z.infer<typeof PhotosResponseSchema>;
 
-
-
 export const GET_IMAGES_ERROR = {
-  invalidResponse: 'invalidResponse',
+  invalidSchema: 'invalidSchema',
   apiFailure: 'apiFailure',
+  rateLimited: 'rateLimited',
 } as const;
 
 export type GetImagesError = typeof GET_IMAGES_ERROR[keyof typeof GET_IMAGES_ERROR];
 
 export async function getImagesByDay(date: DateApiFormat): Promise<Result<PhotosResponse, GetImagesError>> {
+  const key = Bun.env.NASA_API_KEY ?? 'DEMO_KEY'
   try {
-    const response = await ky.get(`https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos?earth_date=${date}&api_key=DEMO_KEY`, {
-      // this can take a while
-      timeout: 15_000,
-    }).json();
-    const result = PhotosResponseSchema.safeParse(response);
+    const response = await axios.get(`https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos?earth_date=${date}&api_key=${key}`);
+    const result = PhotosResponseSchema.safeParse(response.data);
     if (result.error) {
       console.error(`api error ${result.error.message}`);
-      return { ok: false, value: GET_IMAGES_ERROR.invalidResponse };
+      return { ok: false, value: GET_IMAGES_ERROR.invalidSchema };
     }
     return { ok: true, value: result.data };
   } catch (e) {
-    if (typeof e === 'object' && e !== null && 'status' in e) {
-      console.log(e.status);
+    if (isAxiosError(e)) {
+      if (e.status) {
+        console.error(`rate limit exceeded ${e}`);
+        return { ok: false, value: GET_IMAGES_ERROR.rateLimited };
+      }
     }
     console.error(`failed to get images: ${e}`);
     return { ok: false, value: GET_IMAGES_ERROR.apiFailure };

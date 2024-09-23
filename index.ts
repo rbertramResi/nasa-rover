@@ -5,7 +5,8 @@ import { match } from 'ts-pattern';
 import { GET_IMAGES_ERROR } from './client/nasa-client';
 const app = server();
 
-app.get('/api/v1/images', async (req, res) => {
+const PORT = 8080;
+app.post('/api/v1/images', async (req, res) => {
   const dateParam = req.query?.date ?? '';
   const validationResult = toApiSchema(dateParam);
   if (!validationResult.ok) {
@@ -36,6 +37,6 @@ app.get('/api/v1/images', async (req, res) => {
     .exhaustive();
 });
 
-app.listen(5555, () =>
-  console.log(`Listening on port 5555!`),
+app.listen(PORT, () =>
+  console.log(`Listening on port ${PORT}`),
 );
